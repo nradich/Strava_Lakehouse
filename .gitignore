@@ -2,3 +2,4 @@
 .databricks
 .vscode/settings.json
 config.py
+databricks_paths.txt
