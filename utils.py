@@ -4,6 +4,7 @@ from pyspark.sql.types import LongType
 from pyspark.sql.functions import * 
 from pyspark.sql.session import SparkSession
 from pyspark.sql.utils import AnalysisException
+from pyspark.sql import DataFrame
 spark = SparkSession.builder.getOrCreate()
 import pandas as pd
 
@@ -98,3 +99,48 @@ def get_historical_dataset(storagepath, historical_df_to_write, historical_stora
 
     return historical_dataframe
 
+def query_segments(activity_ids : list,access_token ) -> DataFrame:
+    """Gets all segment_ids for each activity_id submitted
+    Returns distinct values"""
+    df = pd.DataFrame()
+    activity_id_list =[]
+    segment_id_list =[]
+    for id in activity_ids:
+        activity_id_urls = ("{}{}?include_all_efforts= True").format("https://www.strava.com/api/v3/activities/",id)
+        header = {'Authorization': 'Bearer ' + access_token}
+        param = {'per_page': 200, 'page': 1}
+        my_activity = requests.get(activity_id_urls, headers=header, params=param).json()
+
+        segment_effort_count =  len(my_activity['segment_efforts'])
+        count = 0
+        while count < segment_effort_count:
+
+            activity_id = my_activity['segment_efforts'][count]['activity']['id']
+            segment_id = my_activity['segment_efforts'][count]['id']
+            activity_id_list.append(activity_id)
+            segment_id_list.append(segment_id)
+                  
+            columns = ['segment_id', 'activity_id']
+            extracted_data = [segment_id_list, activity_id_list]
+            segment_df = pd.DataFrame.from_dict(dict(zip(columns, extracted_data)))
+
+            df = pd.concat([df, segment_df])
+
+            count += 1
+
+    #convert pandas df to spark
+        
+    segment_spark_df = spark.createDataFrame(df)
+
+    #drop duplicate entries
+    segment_spark_df = segment_spark_df.dropDuplicates()
+
+    segment_spark_df = segment_spark_df.select(concat(segment_spark_df.segment_id,segment_spark_df.activity_id).alias("Activity_Segment_JointID"), 'segment_id','activity_id')
+
+    segment_spark_df = segment_spark_df.withColumn("ingest_file_name", lit("segment_efforts_ids")) \
+                                .withColumn("ingested_at", lit(current_timestamp()))
+
+    return segment_spark_df
+
+
+    
