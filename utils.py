@@ -4,7 +4,7 @@ from pyspark.sql.types import LongType
 from pyspark.sql.functions import * 
 from pyspark.sql.session import SparkSession
 from pyspark.sql.utils import AnalysisException
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, Row
 spark = SparkSession.builder.getOrCreate()
 import pandas as pd
 
@@ -222,5 +222,19 @@ def list_comparison(subset :list, all_entries :list )-> list:
     not_in_subset = [x for x in all_entries if x not in subset ]
     return not_in_subset
 
+def append_activities_without_segments( segment_df : DataFrame, activites_no_segments : list ) -> DataFrame:
+    "Append in activies that do not return any segments from the API call"
+    rows = [Row(Activity_Segment_JointID=i,  activity_id = i) for i in activites_no_segments]
+    new_df = spark.createDataFrame(rows)
+    new_df = new_df.withColumn("ingest_file_name", lit("segment_efforts_ids")) \
+                                    .withColumn("ingested_at", lit(current_timestamp()))\
+                                    .withColumn("segment_id", lit(None).cast("long"))
 
+    #reorder columns to union into 
+    new_df_reordered = new_df.select(*segment_df.columns)
+
+    #union the two datasets together
+    all_segment_ids = segment_df.union(new_df_reordered)
+
+    return all_segment_ids
 
