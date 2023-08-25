@@ -8,7 +8,7 @@ from pyspark.sql import DataFrame
 spark = SparkSession.builder.getOrCreate()
 import pandas as pd
 
-def activity_api_call(access_token):
+def activity_api_call(access_token :str):
     """Returns all activities for a personal strava account, need access token"""
     activities_url = "https://www.strava.com/api/v3/athlete/activities"
     header = {'Authorization': 'Bearer ' + access_token}
@@ -99,7 +99,7 @@ def get_historical_dataset(storagepath, historical_df_to_write, historical_stora
 
     return historical_dataframe
 
-def query_segments(activity_ids : list,access_token ) -> DataFrame:
+def query_segments(activity_ids : list,access_token : str ) -> DataFrame:
     """Gets all segment_ids for each activity_id submitted
     Returns distinct values"""
     df = pd.DataFrame()
@@ -142,7 +142,7 @@ def query_segments(activity_ids : list,access_token ) -> DataFrame:
 
     return segment_spark_df
 
-def query_segment_details(segment_list: list ,access_token) -> DataFrame :
+def query_segment_details(segment_list: list ,access_token : str) -> DataFrame :
         "API Call to retrieve segment details ie segment distance, segment name etc. Returns a spark dataframe"
 
         #empty lists of values to parse from API call
@@ -216,6 +216,11 @@ def query_segment_details(segment_list: list ,access_token) -> DataFrame :
                 segment_spark_df = segment_spark_df.withColumn("ingest_file_name", lit("segment_details")) \
                                 .withColumn("ingested_at", lit(current_timestamp()))
         return segment_spark_df
+
+def list_comparison(subset :list, all_entries :list )-> list:
+    "Compares two list and returns entries found in all entries, but not in subset"
+    not_in_subset = [x for x in all_entries if x not in subset ]
+    return not_in_subset
 
 
 
