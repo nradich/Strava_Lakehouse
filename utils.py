@@ -7,7 +7,6 @@ from pyspark.sql.utils import AnalysisException
 from pyspark.sql import DataFrame, Row
 spark = SparkSession.builder.getOrCreate()
 import pandas as pd
-from ratelimiter import RateLimiter
 
 def activity_api_call(access_token :str):
     """Returns all activities for a personal strava account, need access token"""
@@ -17,8 +16,6 @@ def activity_api_call(access_token :str):
     activity_dataset = requests.get(activities_url, headers=header, params=param).json()
     
     return activity_dataset
-
-
 
 
 def extract_activities(dataset):
@@ -83,7 +80,6 @@ def write_dataframe_to_storage(dataset, storage_path, option, mode ):
     .option(option, "true")\
     .mode(mode)\
     .save(storage_path)
-
 
 
 def get_historical_dataset(storagepath, historical_df_to_write, historical_storagepath):
@@ -320,7 +316,3 @@ def query_segment_details_with_limits(segment_list: list ,access_token : str, ra
                         .withColumn("ingested_at", lit(current_timestamp()))
         return segment_spark_df
         
-
-
-
-
