@@ -7,6 +7,7 @@ from pyspark.sql.utils import AnalysisException
 from pyspark.sql import DataFrame, Row
 spark = SparkSession.builder.getOrCreate()
 import pandas as pd
+from ratelimiter import RateLimiter
 
 def activity_api_call(access_token :str):
     """Returns all activities for a personal strava account, need access token"""
@@ -237,4 +238,87 @@ def append_activities_without_segments( segment_df : DataFrame, activites_no_seg
     all_segment_ids = segment_df.union(new_df_reordered)
 
     return all_segment_ids
+
+def query_segment_details_with_limits(segment_list: list ,access_token : str) -> DataFrame :
+        "API Call to retrieve segment details ie segment distance, segment name etc. Returns a spark dataframe"
+
+        #empty lists of values to parse from API call
+        returned_segment = []
+        segment_name = []
+        returned_activity =[]
+        activity_name = []
+        activity_type = []
+        segment_elevation_high =[]
+        segment_elevation_low = []
+        segment_distance = []
+        activity_max_speed =[]
+        activity_avg_speed =[]
+        activity_start_date =[]
+        segment_pr_date = []
+        segment_pr_time=[]
+
+        with rate_limiter:
+            try:
+                #loop through submitted segments and request segment information
+                for segments in segment_list:
+                        segment_effort_urls = ("{}{}?include_all_efforts= True").format("https://www.strava.com/api/v3/segment_efforts/",segments)
+                        header = {'Authorization': 'Bearer ' + access_token}
+                        param = {'per_page': 200, 'page': 1}
+                        segments = requests.get(segment_effort_urls, headers=header, params=param).json()
+
+                        #json navigation to extract values from API call
+                        segment_id = segments['id']
+                        segment_name_extract = segments['name']
+                        activity_id = segments['activity']['id']
+                        activity_name_extract = segments['activity']['name']
+                        activity_type_extract = segments['activity']['type']
+                        elevation_high = segments['segment']['elevation_high']
+                        elevation_low = segments['segment']['elevation_low']
+                        segment_distance_extract = segments['segment']['distance']
+                        activity_max_speed_extract = segments['activity']['max_speed']
+                        activity_avg_speed_extract = segments['activity']['average_speed']
+                        activity_start_date_extract = segments['activity']['start_date']
+                        segment_pr_date_extract = segments['athlete_segment_stats']['pr_date']
+                        segment_pr_time_extract = segments['athlete_segment_stats']['pr_elapsed_time']
+
+                        #Append extracted values to lists
+                        returned_segment.append(segment_id)
+                        segment_name.append(segment_name_extract)
+                        returned_activity.append(activity_id)
+                        activity_name.append(activity_name_extract)
+                        activity_type.append(activity_type_extract)
+                        segment_elevation_high.append(elevation_high)
+                        segment_elevation_low.append(elevation_low)
+                        segment_distance.append(segment_distance_extract)
+                        activity_max_speed.append(activity_max_speed_extract)
+                        activity_avg_speed.append(activity_avg_speed_extract)
+                        activity_start_date.append(activity_start_date_extract)    
+                        segment_pr_date.append(segment_pr_date_extract)
+                        segment_pr_time.append(segment_pr_time_extract)
+
+
+
+                columns = ['returned_segment','segment_name','returned_activity' ,'activity_name' ,'activity_type' ,'segment_elevation_high' ,
+                        'segment_elevation_low' ,'segement_distance' ,'activity_max_speed','activity_avg_speed','activity_start_date', 
+                        'segment_pr_date' ,'segment_pr_time']
+
+                extracted_data = [returned_segment,segment_name,returned_activity,activity_name,activity_type ,
+                                        segment_elevation_high,segment_elevation_low,segment_distance ,activity_max_speed,
+                                        activity_avg_speed,activity_start_date,segment_pr_date ,segment_pr_time ]
+
+                #combined extracted values and associated columns names to a DF
+                segment_data_df = pd.DataFrame.from_dict(dict(zip(columns, extracted_data)))
+
+                #convert pandas DF to spark DF
+                segment_spark_df = spark.createDataFrame(segment_data_df)
+                segment_spark_df = segment_spark_df.withColumn("ingest_file_name", lit("segment_details")) \
+                                .withColumn("ingested_at", lit(current_timestamp()))
+                return segment_spark_df
+                
+            except requests.RequestException as e:
+                print(f"API call failed with exception: {e}")
+                return None
+
+
+
 
