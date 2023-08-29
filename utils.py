@@ -239,7 +239,7 @@ def append_activities_without_segments( segment_df : DataFrame, activites_no_seg
 
     return all_segment_ids
 
-def query_segment_details_with_limits(segment_list: list ,access_token : str) -> DataFrame :
+def query_segment_details_with_limits(segment_list: list ,access_token : str, rate_limiter) -> DataFrame :
         "API Call to retrieve segment details ie segment distance, segment name etc. Returns a spark dataframe"
 
         #empty lists of values to parse from API call
@@ -257,10 +257,10 @@ def query_segment_details_with_limits(segment_list: list ,access_token : str) ->
         segment_pr_date = []
         segment_pr_time=[]
 
-        with rate_limiter:
-            try:
                 #loop through submitted segments and request segment information
-                for segments in segment_list:
+        for segments in segment_list:
+                with rate_limiter:
+                    try:
                         segment_effort_urls = ("{}{}?include_all_efforts= True").format("https://www.strava.com/api/v3/segment_efforts/",segments)
                         header = {'Authorization': 'Bearer ' + access_token}
                         param = {'per_page': 200, 'page': 1}
@@ -297,27 +297,29 @@ def query_segment_details_with_limits(segment_list: list ,access_token : str) ->
                         segment_pr_time.append(segment_pr_time_extract)
 
 
+                    except requests.RequestException as e:
+                        print(f"API call failed with exception: {e}")
+                        return None
 
-                columns = ['returned_segment','segment_name','returned_activity' ,'activity_name' ,'activity_type' ,'segment_elevation_high' ,
-                        'segment_elevation_low' ,'segement_distance' ,'activity_max_speed','activity_avg_speed','activity_start_date', 
-                        'segment_pr_date' ,'segment_pr_time']
 
-                extracted_data = [returned_segment,segment_name,returned_activity,activity_name,activity_type ,
-                                        segment_elevation_high,segment_elevation_low,segment_distance ,activity_max_speed,
-                                        activity_avg_speed,activity_start_date,segment_pr_date ,segment_pr_time ]
 
-                #combined extracted values and associated columns names to a DF
-                segment_data_df = pd.DataFrame.from_dict(dict(zip(columns, extracted_data)))
+        columns = ['returned_segment','segment_name','returned_activity' ,'activity_name' ,'activity_type' ,'segment_elevation_high' ,
+                'segment_elevation_low' ,'segement_distance' ,'activity_max_speed','activity_avg_speed','activity_start_date', 
+                'segment_pr_date' ,'segment_pr_time']
 
-                #convert pandas DF to spark DF
-                segment_spark_df = spark.createDataFrame(segment_data_df)
-                segment_spark_df = segment_spark_df.withColumn("ingest_file_name", lit("segment_details")) \
-                                .withColumn("ingested_at", lit(current_timestamp()))
-                return segment_spark_df
-                
-            except requests.RequestException as e:
-                print(f"API call failed with exception: {e}")
-                return None
+        extracted_data = [returned_segment,segment_name,returned_activity,activity_name,activity_type ,
+                                segment_elevation_high,segment_elevation_low,segment_distance ,activity_max_speed,
+                                activity_avg_speed,activity_start_date,segment_pr_date ,segment_pr_time ]
+
+        #combined extracted values and associated columns names to a DF
+        segment_data_df = pd.DataFrame.from_dict(dict(zip(columns, extracted_data)))
+
+        #convert pandas DF to spark DF
+        segment_spark_df = spark.createDataFrame(segment_data_df)
+        segment_spark_df = segment_spark_df.withColumn("ingest_file_name", lit("segment_details")) \
+                        .withColumn("ingested_at", lit(current_timestamp()))
+        return segment_spark_df
+        
 
 
 
